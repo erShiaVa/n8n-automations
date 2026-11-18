@@ -1,0 +1,1028 @@
+{
+  "name": "Event Order Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 13
+            },
+            {
+              "triggerAtHour": 14
+            }
+          ]
+        }
+      },
+      "id": "c69c72b7-4885-4f2b-887e-700440432320",
+      "name": "Täglich 13:00 + 14:00 Uhr",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        12736,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Hier alle Preise und Einstellungen pflegen.\n// HINWEIS: Alle Preise sind Beispielwerte, nicht die echten Preise.\nreturn [{\n  json: {\n    // Preise netto (19 % USt rechnet sevDesk)\n    preisProBecher: 5,\n    stundensatz: 15,          // pro Mitarbeitende:r und Stunde\n    mitarbeiter: 2,\n    aufAbbauStunden: 2,       // 1 h Aufbau + 1 h Abbau\n    wochenendzuschlag: 50,    // Fr, Sa, So und Berliner Feiertage\n    transportBerlin: 80, \n    transport50km: 150,\n    transport100km: 250,\n\n    pos1Name: 'Produkt – Becher',\n    pos2Name: 'Service-Pauschale',\n    steuersatz: 19,\n    einheitBecherId: 1,       // sevDesk-Einheit \"Stk\"\n    einheitPauschaleId: 1,    // sevDesk-Einheit für die Service-Pauschale\n\n    benachrichtigungAn: 'deine.adresse@example.com',\n    // Nur Formular-Anfragen im Label \"Events\", die noch nicht verarbeitet wurden, ab Starttag\n    gmailSuche: 'label:events from:form-submission@squarespace.info -label:angebot-erstellt -label:angebot-fehlgeschlagen after:2026/09/25',\n    labelErstellt: 'Angebot erstellt',\n    labelFehlgeschlagen: 'Angebot fehlgeschlagen',\n    sevdeskAngebotLink: 'https://my.sevdesk.de/om/detail/id/',\n  }\n}];"
+      },
+      "id": "91f7c3c7-0456-4c97-a726-410c8041a40d",
+      "name": "Konfiguration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12960,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "simple": false,
+        "filters": {
+          "q": "={{ $('Konfiguration').first().json.gmailSuche }}"
+        },
+        "options": {}
+      },
+      "id": "9f1d87c1-cd45-4d33-b732-dbc0de58e1b0",
+      "name": "Gmail: Neue Anfragen holen",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        13168,
+        5584
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "label",
+        "returnAll": true
+      },
+      "id": "0ca14d80-99d0-4891-92c6-eb6a6c137875",
+      "name": "Gmail: Labels laden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        13392,
+        5584
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Konfiguration').first().json;\nconst labels = $input.all().map(i => i.json);\nconst find = (name) => {\n  const l = labels.find(x => (x.name || '').toLowerCase() === name.toLowerCase());\n  if (!l) throw new Error('Gmail-Label \"' + name + '\" fehlt. Bitte in Gmail anlegen.');\n  return l.id;\n};\nreturn [{ json: { labelErstellt: find(cfg.labelErstellt), labelFehlgeschlagen: find(cfg.labelFehlgeschlagen) } }];"
+      },
+      "id": "9a59a474-b2c5-47db-9929-8bf0e81ad691",
+      "name": "Label-IDs ermitteln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13616,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://my.sevdesk.de/api/v1/SevUser",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "cb469ef9-c4bd-4526-8563-924df4e5cb60",
+      "name": "sevDesk: Benutzer laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        13840,
+        5584
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Die Mails aus \"Gmail: Neue Anfragen holen\" wieder aufnehmen\nreturn $('Gmail: Neue Anfragen holen').all().map(m => ({ json: m.json, pairedItem: { item: 0 } }));"
+      },
+      "id": "d9aaec87-a63e-46f6-b0f4-fcee23f1a757",
+      "name": "Anfragen übernehmen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13952,
+        5392
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "eef59a40-e55e-4482-8060-8422ea4567f4",
+      "name": "Einzeln abarbeiten",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        14048,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Liest die Squarespace-Formular-Mail aus und berechnet das Angebot.\n// Wirft einen Fehler, wenn Pflichtangaben fehlen -> Fehlerzweig.\nconst cfg = $('Konfiguration').first().json;\nconst mail = $json;\n\n// --- Text der Mail holen (Text-Teil bevorzugt, sonst HTML entschärfen) ---\nlet body = typeof mail.text === 'string' && mail.text.trim() ? mail.text : '';\nif (!body) {\n  body = String(mail.html || '')\n    .replace(/<br\\s*\\/?>/gi, '\\n')\n    .replace(/<\\/(p|div|tr|li|h\\d)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&');\n}\nbody = body.replace(/\\r/g, '').replace(/\\*/g, '');\n\nconst LABELS = {\n  name: 'Name',\n  email: 'E-Mail',\n  datum: 'Wann findet euer Event statt\\\\?',\n  gaeste: 'Wie viele Gäste erwartet ihr\\\\?',\n  dauer: 'Wie lange sollen wir für euch rollen\\\\?',\n  ort: 'Wo findet das Event statt\\\\?',\n  nachricht: 'Nachricht',\n};\nconst STOP = Object.values(LABELS).join('|') + '|Sent via form submission|Manage Submissions|Does this submission';\n\nfunction feld(label) {\n  const re = new RegExp('(?:^|\\\\n)[ \\\\t]*' + label + '[ \\\\t]*:?[ \\\\t]*([\\\\s\\\\S]*?)(?=\\\\n[ \\\\t]*(?:' + STOP + ')|$)', 'i');\n  const m = body.match(re);\n  return m ? m[1].trim() : '';\n}\n\nconst fehlend = [];\nconst pflicht = (wert, name) => { if (!wert) fehlend.push(name); return wert; };\n\n// --- Name ---\nconst nameRoh = pflicht(feld(LABELS.name).replace(/\\s+/g, ' '), 'Name');\nconst teile = nameRoh.split(' ');\nconst vorname = teile.shift() || '';\nconst nachname = teile.join(' ');\n\n// --- E-Mail ---\nconst emailM = feld(LABELS.email).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);\nconst email = pflicht(emailM ? emailM[0].toLowerCase() : '', 'E-Mail');\n\n// --- Datum ---\nconst MONATE = { januar: 1, jan: 1, februar: 2, feb: 2, 'märz': 3, maerz: 3, marz: 3, 'mär': 3, april: 4, apr: 4, mai: 5, juni: 6, jun: 6, juli: 7, jul: 7, august: 8, aug: 8, september: 9, sep: 9, sept: 9, oktober: 10, okt: 10, november: 11, nov: 11, dezember: 12, dez: 12,\n  january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, october: 10, oct: 10, december: 12, dec: 12 };\nconst datumRoh = pflicht(feld(LABELS.datum), 'Eventdatum');\nlet tag, monat, jahr, m;\nif ((m = datumRoh.match(/(\\d{1,2})\\.?\\s+([A-Za-zÄÖÜäöü]+)\\.?\\s+(\\d{4})/))) {\n  tag = +m[1]; monat = MONATE[m[2].toLowerCase()]; jahr = +m[3];\n} else if ((m = datumRoh.match(/(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})/))) {\n  tag = +m[1]; monat = +m[2]; jahr = +m[3];\n} else if ((m = datumRoh.match(/(\\d{4})-(\\d{2})-(\\d{2})/))) {\n  jahr = +m[1]; monat = +m[2]; tag = +m[3];\n}\nconst eventDatum = monat ? new Date(Date.UTC(jahr, monat - 1, tag)) : null;\nif (datumRoh && (!eventDatum || eventDatum.getUTCDate() !== tag)) fehlend.push('Eventdatum (nicht lesbar: \"' + datumRoh + '\")');\n\n// --- Gäste ---\nconst gaesteRoh = pflicht(feld(LABELS.gaeste), 'Gästezahl');\nconst gaesteM = gaesteRoh.match(/\\d+/);\nconst gaeste = gaesteM ? parseInt(gaesteM[0], 10) : 0;\nif (gaesteRoh && !gaeste) fehlend.push('Gästezahl (nicht lesbar: \"' + gaesteRoh + '\")');\n\n// --- Dauer: Zahl oder Zeitspanne wie \"18-22 Uhr\" ---\nconst dauerRoh = pflicht(feld(LABELS.dauer), 'Dauer');\nfunction stunden(s) {\n  const t = s.toLowerCase().replace(/,/g, '.');\n  const r = t.match(/(\\d{1,2})(?:[:.](\\d{2}))?\\s*(?:uhr|h)?\\s*(?:-|–|—|bis)\\s*(\\d{1,2})(?:[:.](\\d{2}))?/);\n  if (r) {\n    const von = +r[1] + (r[2] ? +r[2] / 60 : 0);\n    let bis = +r[3] + (r[4] ? +r[4] / 60 : 0);\n    if (bis <= von) bis += 24; // über Mitternacht\n    return Math.round((bis - von) * 100) / 100;\n  }\n  const z = t.match(/\\d+(?:\\.\\d+)?/);\n  return z ? parseFloat(z[0]) : 0;\n}\nconst dauer = dauerRoh ? stunden(dauerRoh) : 0;\nif (dauerRoh && !(dauer > 0)) fehlend.push('Dauer (nicht lesbar: \"' + dauerRoh + '\")');\n\n// --- Ort / Transport ---\nconst ortRoh = pflicht(feld(LABELS.ort), 'Ort');\nconst ortKey = ortRoh.toLowerCase().replace(/\\s+/g, '');\nlet transport = null;\nif (ortKey.includes('100km')) transport = cfg.transport100km;\nelse if (ortKey.includes('50km')) transport = cfg.transport50km;\nelse if (ortKey.includes('inberlin')) transport = cfg.transportBerlin;\nif (ortRoh && transport === null) fehlend.push('Ort (unbekannte Auswahl: \"' + ortRoh + '\")');\n\nconst nachricht = feld(LABELS.nachricht);\n\nif (fehlend.length) {\n  throw new Error('Anfrage unvollständig oder nicht lesbar: ' + fehlend.join(', '));\n}\n\n// --- Wochenende / Berliner Feiertage ---\nfunction ostersonntag(y) {\n  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;\n  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);\n  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;\n  const l = (32 + 2 * e + 2 * i - h - k) % 7, mm = Math.floor((a + 11 * h + 22 * l) / 451);\n  const monat = Math.floor((h + l - 7 * mm + 114) / 31), tag = ((h + l - 7 * mm + 114) % 31) + 1;\n  return Date.UTC(y, monat - 1, tag);\n}\nfunction feiertagBerlin(d) {\n  const y = d.getUTCFullYear();\n  const TAG = 86400000, ostern = ostersonntag(y);\n  const liste = {\n    [Date.UTC(y, 0, 1)]: 'Neujahr',\n    [Date.UTC(y, 2, 8)]: 'Internationaler Frauentag',\n    [ostern - 2 * TAG]: 'Karfreitag',\n    [ostern + 1 * TAG]: 'Ostermontag',\n    [Date.UTC(y, 4, 1)]: 'Tag der Arbeit',\n    [ostern + 39 * TAG]: 'Christi Himmelfahrt',\n    [ostern + 50 * TAG]: 'Pfingstmontag',\n    [Date.UTC(y, 9, 3)]: 'Tag der Deutschen Einheit',\n    [Date.UTC(y, 11, 25)]: '1. Weihnachtstag',\n    [Date.UTC(y, 11, 26)]: '2. Weihnachtstag',\n  };\n  return liste[d.getTime()] || null;\n}\nconst WOCHENTAGE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];\nconst wochentag = WOCHENTAGE[eventDatum.getUTCDay()];\nconst feiertag = feiertagBerlin(eventDatum);\nconst wochenende = [5, 6, 0].includes(eventDatum.getUTCDay()) || !!feiertag;\n\n// --- Preise (netto) ---\nconst r2 = (x) => Math.round(x * 100) / 100;\nconst stundenGesamt = r2(dauer + cfg.aufAbbauStunden);\nconst personal = r2(stundenGesamt * cfg.mitarbeiter * cfg.stundensatz);\nconst zuschlag = wochenende ? cfg.wochenendzuschlag : 0;\nconst pos1 = r2(gaeste * cfg.preisProBecher);\nconst pos2 = r2(personal + transport + zuschlag);\n\nconst pos2Text = ['Personal', 'Transportkosten', 'Auf- und Abbau'].concat(wochenende ? ['Wochenendzuschlag'] : []).join('\\n');\nconst pad = (n) => String(n).padStart(2, '0');\nconst datumDE = pad(tag) + '.' + pad(monat) + '.' + jahr;\n\nreturn {\n  json: {\n    messageId: mail.id,\n    vorname, nachname, name: nameRoh, email,\n    eventDatum: datumDE, wochentag, feiertag,\n    gaeste, dauerRoh, dauer, stundenGesamt,\n    ort: ortRoh, nachricht,\n    wochenende,\n    rechnung: { pos1, personal, transport, zuschlag, pos2, nettoGesamt: r2(pos1 + pos2) },\n    pos2Text,\n    titel: 'Unverbindliches Angebot – Event am ' + datumDE,\n  },\n};\n"
+      },
+      "id": "a739e886-d3f6-4023-bce8-f4f82cce70c2",
+      "name": "Anfrage auslesen & berechnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14288,
+        5696
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://my.sevdesk.de/api/v1/SevSequence/Factory/getByType",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "objectType",
+              "value": "Order"
+            },
+            {
+              "name": "type",
+              "value": "AN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "17b221c2-da5e-480d-95b7-325b26439f6e",
+      "name": "sevDesk: Nummernkreis Angebote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14432,
+        5696
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://my.sevdesk.de/api/v1/Order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "orderType",
+              "value": "AN"
+            },
+            {
+              "name": "limit",
+              "value": "10000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2ab5d931-6007-4ddc-8ce8-b9a56079ca6f",
+      "name": "sevDesk: Bestehende Angebote laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14576,
+        5696
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://my.sevdesk.de/api/v1/CommunicationWay",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "EMAIL"
+            },
+            {
+              "name": "limit",
+              "value": "10000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "54a88363-03b9-4b23-9eab-6cc53e523904",
+      "name": "sevDesk: E-Mail-Adressen laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14736,
+        5696
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://my.sevdesk.de/api/v1/Contact",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "depth",
+              "value": "1"
+            },
+            {
+              "name": "name",
+              "value": "={{ $('Anfrage auslesen & berechnen').item.json.nachname || $('Anfrage auslesen & berechnen').item.json.vorname }}"
+            },
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9c3efa89-d5ad-441b-85be-da21f09e0e52",
+      "name": "sevDesk: Kontakte nach Name suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14960,
+        5696
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Suche per E-Mail  2. sonst per Name (genau 1 Treffer)  3. sonst neu anlegen\nconst a = $('Anfrage auslesen & berechnen').item.json;\nconst wege = $('sevDesk: E-Mail-Adressen laden').item.json.objects || [];\nconst personen = $json.objects || [];\nconst hinweise = [];\nconst norm = (s) => String(s || '').trim().toLowerCase();\n\nconst perMail = [...new Set(wege\n  .filter(w => norm(w.value) === a.email && w.contact && w.contact.id)\n  .map(w => String(w.contact.id)))];\nif (perMail.length) {\n  if (perMail.length > 1) hinweise.push('E-Mail ist bei ' + perMail.length + ' Kontakten hinterlegt, erster Treffer verwendet');\n  return { json: { contactId: perMail[0], kontaktStatus: 'bestehender Kontakt (per E-Mail gefunden)', hinweise } };\n}\n\nif (!a.nachname) {\n  hinweise.push('Kein Nachname angegeben: neuer Kontakt angelegt, mögliche Dublette bitte prüfen');\n  return { json: { contactId: null, kontaktStatus: 'neu angelegt', hinweise } };\n}\n\nconst perName = personen.filter(p => norm(p.surename) === norm(a.vorname) && norm(p.familyname) === norm(a.nachname));\nif (perName.length === 1) {\n  hinweise.push('Kontakt per Name gefunden, E-Mail weicht ab (' + a.email + '), bitte prüfen');\n  return { json: { contactId: String(perName[0].id), kontaktStatus: 'bestehender Kontakt (per Name gefunden)', hinweise } };\n}\nif (perName.length > 1) hinweise.push(perName.length + ' Kontakte mit gleichem Namen vorhanden: neuer Kontakt angelegt, mögliche Dublette bitte prüfen');\nreturn { json: { contactId: null, kontaktStatus: 'neu angelegt', hinweise } };"
+      },
+      "id": "73e95697-8922-40dd-8d31-bd7dc370cb57",
+      "name": "Kontakt zuordnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15168,
+        5696
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.contactId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "141d3b15-2c75-4911-b9c6-ce8d72f473e7",
+      "name": "Kontakt vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        15392,
+        5696
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://my.sevdesk.de/api/v1/Contact/Factory/getNextCustomerNumber",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "82af47de-6720-49a5-8d58-103a94f36a50",
+      "name": "sevDesk: Nächste Kundennummer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        15616,
+        5872
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://my.sevdesk.de/api/v1/Contact",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  surename: $('Anfrage auslesen & berechnen').item.json.vorname,\n  familyname: $('Anfrage auslesen & berechnen').item.json.nachname,\n  customerNumber: $json.objects,\n  category: { id: 3, objectName: 'Category' }\n}) }}",
+        "options": {}
+      },
+      "id": "1b12f803-f442-464a-a24d-0df11aa3bb30",
+      "name": "sevDesk: Kontakt anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        15840,
+        5872
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://my.sevdesk.de/api/v1/CommunicationWay",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contact: { id: $json.objects.id, objectName: 'Contact' },\n  type: 'EMAIL',\n  value: $('Anfrage auslesen & berechnen').item.json.email,\n  key: { id: 1, objectName: 'CommunicationWayKey' },\n  main: true\n}) }}",
+        "options": {}
+      },
+      "id": "d6d14513-c112-4a20-a3bb-5790eb3b28d5",
+      "name": "sevDesk: E-Mail hinterlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        16048,
+        5872
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const k = $('Kontakt zuordnen').item.json;\nreturn { json: { ...k, contactId: String($('sevDesk: Kontakt anlegen').item.json.objects.id) } };"
+      },
+      "id": "25131405-40da-4452-b75d-2e7ca860ffd5",
+      "name": "Neuer Kontakt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16272,
+        5872
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const cfg = $('Konfiguration').first().json;\nconst a = $('Anfrage auslesen & berechnen').item.json;\nconst userId = $('sevDesk: Benutzer laden').first().json.objects[0].id;\n\n// Angebotsnummer: sevDesk verlangt sie beim Anlegen per API, zählt den Nummernkreis dann aber nicht weiter.\n// Daher: höhere von (nächste Nummer laut Nummernkreis) und (höchste vorhandene Nummer + 1).\nconst seq = $('sevDesk: Nummernkreis Angebote').item.json.objects || {};\nconst format = String(seq.format || 'AN-%NUMBER');\nconst pos = format.indexOf('%NUMBER');\nconst prefix = format.slice(0, pos).replace(/\\[$/, '');\nconst suffix = format.slice(pos + 7).replace(/^\\]/, '');\nlet hoechste = 0;\nfor (const o of ($('sevDesk: Bestehende Angebote laden').item.json.objects || [])) {\n  const nr = String(o.orderNumber || '');\n  if (!nr.startsWith(prefix) || !nr.endsWith(suffix)) continue;\n  const mitte = nr.slice(prefix.length, nr.length - suffix.length);\n  if (/^[0-9]+$/.test(mitte)) hoechste = Math.max(hoechste, parseInt(mitte, 10));\n}\nconst naechste = Math.max(parseInt(seq.nextSequence, 10) || 1, hoechste + 1);\nconst nummer = prefix + naechste + suffix;\nif (pos < 0 || nummer.includes('%')) throw new Error('Angebotsnummer konnte nicht gebildet werden (Format: ' + format + ')');\n\nconst heute = new Date().toISOString().slice(0, 10);\nconst order = {\n  objectName: 'Order', mapAll: true,\n  orderDate: heute,\n  status: 100,                       // Entwurf\n  orderType: 'AN',                   // Angebot\n  header: a.titel,\n  contact: { id: $json.contactId, objectName: 'Contact' },\n  contactPerson: { id: userId, objectName: 'SevUser' },\n  address: a.name,\n  addressCountry: { id: 1, objectName: 'StaticCountry' },\n  taxRule: { id: '1', objectName: 'TaxRule' },   // Umsatzsteuerpflichtige Umsätze\n  taxType: 'default',\n  taxText: 'Umsatzsteuer ' + cfg.steuersatz + '%',\n  taxRate: 0,\n  currency: 'EUR',\n  version: 0,\n  showNet: true,\n};\norder.orderNumber = nummer;\n\nconst body = {\n  order,\n  orderPosSave: [\n    { objectName: 'OrderPos', mapAll: true, positionNumber: 1, name: cfg.pos1Name,\n      quantity: a.gaeste, price: cfg.preisProBecher, taxRate: cfg.steuersatz,\n      unity: { id: cfg.einheitBecherId, objectName: 'Unity' } },\n    { objectName: 'OrderPos', mapAll: true, positionNumber: 2, name: cfg.pos2Name, text: a.pos2Text,\n      quantity: 1, price: a.rechnung.pos2, taxRate: cfg.steuersatz,\n      unity: { id: cfg.einheitPauschaleId, objectName: 'Unity' } },\n  ],\n  orderPosDelete: null,\n};\nreturn { json: { body, contactId: $json.contactId, kontaktStatus: $json.kontaktStatus, hinweise: $json.hinweise || [] } };"
+      },
+      "id": "12cc0e1e-13d7-4973-96e2-2cb428d7be9e",
+      "name": "Angebot vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16496,
+        5696
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://my.sevdesk.de/api/v1/Order/Factory/saveOrder",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "b8ef5484-2545-40ae-9bd4-2033649fad88",
+      "name": "sevDesk: Angebot anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        16720,
+        5696
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Anfrage auslesen & berechnen').item.json.messageId }}",
+        "labelIds": "={{ [$('Label-IDs ermitteln').first().json.labelErstellt] }}"
+      },
+      "id": "c0e63827-9c7a-43eb-818d-def7e4a7678d",
+      "name": "Gmail: Label 'Angebot erstellt'",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        16928,
+        5696
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const cfg = $('Konfiguration').first().json;\nconst a = $('Anfrage auslesen & berechnen').item.json;\nconst v = $('Angebot vorbereiten').item.json;\nconst o = $('sevDesk: Angebot anlegen').item.json.objects.order;\nconst eur = (x) => x.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';\n\nconst hinweise = [...v.hinweise];\nconst [t, m, j] = a.eventDatum.split('.').map(Number);\nif (Date.UTC(j, m - 1, t) < Date.now() - 86400000) hinweise.push('Eventdatum liegt in der Vergangenheit');\nif (a.dauer > 12) hinweise.push('Ungewöhnlich lange Dauer (' + a.dauer + ' h) – Eingabe war: \"' + a.dauerRoh + '\"');\n\nconst zeilen = [\n  'Angebot zum Überprüfen steht in sevDesk bereit.',\n  '',\n  'Angebot: ' + (o.orderNumber || '(ohne Nummer)') + ' – ' + a.titel,\n  'Link: ' + cfg.sevdeskAngebotLink + o.id,\n  'Kunde: ' + a.name + ' (' + a.email + '), ' + v.kontaktStatus,\n  'Event: ' + a.wochentag + ', ' + a.eventDatum + (a.feiertag ? ' (' + a.feiertag + ')' : '') + ' · ' + a.gaeste + ' Gäste · ' + a.dauer + ' h + ' + cfg.aufAbbauStunden + ' h Auf-/Abbau · ' + a.ort,\n  'Summe netto: ' + eur(a.rechnung.nettoGesamt),\n];\nif (hinweise.length) zeilen.push('', 'Bitte prüfen:', ...hinweise.map(h => '- ' + h));\nif (a.nachricht) zeilen.push('', 'Nachricht des Kunden:', a.nachricht);\n\nreturn { json: { betreff: 'Angebot zum Überprüfen: ' + a.name + ', Event am ' + a.eventDatum, text: zeilen.join('\\n') } };"
+      },
+      "id": "a343df53-2874-4880-a7b2-f3545d05cbc8",
+      "name": "Benachrichtigung vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        17152,
+        5696
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Konfiguration').first().json.benachrichtigungAn }}",
+        "subject": "={{ $json.betreff }}",
+        "emailType": "text",
+        "message": "={{ $json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c604f14d-1393-49f3-a04d-2e6a4f8583a7",
+      "name": "Gmail: Benachrichtigung senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        17376,
+        5696
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const e = $json.error ?? $json;\nlet text = typeof e === 'string' ? e : (e.message || '') + (e.description ? ' – ' + e.description : '');\nif (!text) text = JSON.stringify(e).slice(0, 1500);\nlet mail = {};\ntry { mail = $('Einzeln abarbeiten').item.json; } catch (x) { mail = $('Einzeln abarbeiten').first().json; }\nreturn { json: {\n  messageId: mail.id,\n  betreff: 'FEHLER: Angebot konnte nicht erstellt werden – ' + (mail.subject || ''),\n  text: [\n    'Für eine Eventanfrage konnte kein Angebot erstellt werden.',\n    '',\n    'Schritt: ' + $prevNode.name,\n    'Fehler: ' + text,\n    '',\n    'Die Mail hat das Label \"Angebot fehlgeschlagen\" bekommen und wird nicht erneut verarbeitet.',\n    'Zum erneuten Versuch: Label in Gmail entfernen.',\n    '',\n    '--- Original-Anfrage ---',\n    String(mail.text || '').slice(0, 3000),\n  ].join('\\n'),\n} };"
+      },
+      "id": "38f074a5-0c74-4f4f-be45-0068300d7742",
+      "name": "Fehler aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15392,
+        6176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.messageId }}",
+        "labelIds": "={{ [$('Label-IDs ermitteln').first().json.labelFehlgeschlagen] }}"
+      },
+      "id": "235d8b3e-d007-4297-b36d-4cdd21385357",
+      "name": "Gmail: Label 'Angebot fehlgeschlagen'",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        15616,
+        6176
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Konfiguration').first().json.benachrichtigungAn }}",
+        "subject": "={{ $('Fehler aufbereiten').item.json.betreff }}",
+        "emailType": "text",
+        "message": "={{ $('Fehler aufbereiten').item.json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e391ec46-1f82-44ec-bb2a-1c24b869b949",
+      "name": "Gmail: Fehler-Mail senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        15840,
+        6176
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Eventanfrage → sevDesk-Angebotsentwurf\nLäuft täglich um 13:00 und 14:00 (Europe/Berlin). Fragt sevDesk nur, wenn neue Anfragen da sind. Holt neue Formular-Anfragen aus dem Gmail-Label **Events**, legt in sevDesk einen **Angebotsentwurf** an (wird nicht versendet) und schickt eine Benachrichtigung.\n\n**Preise & Einstellungen:** Node „Konfiguration“. **sevDesk-Zugang:** Header Auth `Authorization` = API-Token (Credential „Header Auth account“).\nVerarbeitete Mails bekommen das Label **Angebot erstellt**, fehlerhafte **Angebot fehlgeschlagen**.",
+        "height": 200,
+        "width": 1300
+      },
+      "id": "7ea38f7a-5d1d-4918-bf73-ccb8b66248b0",
+      "name": "Hinweis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        12688,
+        5312
+      ]
+    }
+  ],
+  "connections": {
+    "Täglich 13:00 + 14:00 Uhr": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Konfiguration": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Neue Anfragen holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Neue Anfragen holen": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Labels laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Labels laden": {
+      "main": [
+        [
+          {
+            "node": "Label-IDs ermitteln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Label-IDs ermitteln": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: Benutzer laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Benutzer laden": {
+      "main": [
+        [
+          {
+            "node": "Anfragen übernehmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anfragen übernehmen": {
+      "main": [
+        [
+          {
+            "node": "Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einzeln abarbeiten": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Anfrage auslesen & berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anfrage auslesen & berechnen": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: Nummernkreis Angebote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Nummernkreis Angebote": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: Bestehende Angebote laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Bestehende Angebote laden": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: E-Mail-Adressen laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: E-Mail-Adressen laden": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: Kontakte nach Name suchen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Kontakte nach Name suchen": {
+      "main": [
+        [
+          {
+            "node": "Kontakt zuordnen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kontakt zuordnen": {
+      "main": [
+        [
+          {
+            "node": "Kontakt vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kontakt vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Angebot vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "sevDesk: Nächste Kundennummer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Nächste Kundennummer": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: Kontakt anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Kontakt anlegen": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: E-Mail hinterlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: E-Mail hinterlegen": {
+      "main": [
+        [
+          {
+            "node": "Neuer Kontakt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neuer Kontakt": {
+      "main": [
+        [
+          {
+            "node": "Angebot vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Angebot vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "sevDesk: Angebot anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sevDesk: Angebot anlegen": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Label 'Angebot erstellt'",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Label 'Angebot erstellt'": {
+      "main": [
+        [
+          {
+            "node": "Benachrichtigung vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fehler aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Benachrichtigung vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Benachrichtigung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Benachrichtigung senden": {
+      "main": [
+        [
+          {
+            "node": "Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Label 'Angebot fehlgeschlagen'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Label 'Angebot fehlgeschlagen'": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Fehler-Mail senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Fehler-Mail senden": {
+      "main": [
+        [
+          {
+            "node": "Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  }
+}

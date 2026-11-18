@@ -1,0 +1,855 @@
+{
+  "name": "Payroll Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a910e8ac-5667-450a-a94c-62eca9d88238",
+              "name": "testmodus",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "30d7676a-0843-4e1f-b89b-de3f0266fa8b",
+              "name": "testadresse",
+              "value": "deine.adresse@example.com",
+              "type": "string"
+            },
+            {
+              "id": "00a0f3d5-acb6-4567-867c-1499720266a0",
+              "name": "infoadresse",
+              "value": "deine.adresse@example.com",
+              "type": "string"
+            },
+            {
+              "id": "4d23f15d-d0e5-40ba-bb48-a682623efdcf",
+              "name": "pdfService",
+              "value": "http://pdf-service:5000",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "54a2bb9d-92b4-4fb4-9524-6aa563198bb1",
+      "name": "⚙️ Einstellungen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1536,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('⚙️ Einstellungen').first().json.pdfService }}/scan",
+        "options": {}
+      },
+      "id": "509578b0-22fc-460d-81d9-75af879eb2b2",
+      "name": "📂 Eingang prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1328,
+        512
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cfa11f6e-ab11-45c3-b7fc-feaf04ba3970",
+              "leftValue": "={{ $json.quellen.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "7e3faa11-9008-4399-8007-4ed635240d6a",
+      "name": "❓ Neue Dateien?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1104,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/DEINE_GOOGLE_SHEET_ID/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "MA_Liste"
+        },
+        "options": {}
+      },
+      "id": "415cc845-cdd6-4a2e-bf7f-5a82dc1437e6",
+      "name": "👤 Mitarbeiterliste lesen",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -880,
+        304
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/DEINE_GOOGLE_SHEET_ID/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Versandprotokoll",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "de9d9a04-f494-4859-a80a-b5cba43dfe23",
+      "name": "📋 Versandprotokoll lesen",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -656,
+        304
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Jede gefundene Abrechnung prüfen: senden oder ignorieren (mit Grund)\nconst cfg = $('⚙️ Einstellungen').first().json;\nconst scan = $('📂 Eingang prüfen').first().json;\nconst liste = $('👤 Mitarbeiterliste lesen').all().map(i => i.json)\n  .filter(r => r.personalnummer !== undefined && String(r.personalnummer).trim() !== '');\nconst protokoll = $('📋 Versandprotokoll lesen').all().map(i => i.json);\n\nconst norm = s => String(s ?? '').trim().toLowerCase();\nconst schluessel = (nr, monat, jahr) => `${parseInt(nr, 10)}|${monat}|${jahr}`;\n\n// Nur echte Versendungen (nicht Testläufe) blockieren einen erneuten Versand\nconst schonVersendet = new Set(\n  protokoll.filter(p => norm(p.status) === 'versendet')\n    .map(p => schluessel(p.personalnummer, p.monat, p.jahr))\n);\n\nconst out = [];\nfor (const a of scan.abrechnungen) {\n  const basis = { quelle: a.quelle, pdf: a.pdf, seiten: a.seiten,\n    personalnummer: a.personalnummer, monat: a.monat, jahr: a.jahr };\n  const person = liste.find(m => parseInt(m.personalnummer, 10) === a.personalnummer);\n\n  let grund = '';\n  if (!a.monat || !a.jahr) grund = 'Monat/Jahr nicht gefunden';\n  else if (!a.seitenzahl_ok) grund = 'Seiten unvollständig (Seite x von y passt nicht)';\n  else if (!person) grund = 'Personalnummer nicht in der Mitarbeiterliste';\n  else if (norm(person.status) !== 'aktiv') grund = `Status ist „${person.status || 'leer'}“`;\n  else if (!norm(a.name_pdf).includes(norm(person.name).split(/\\s+/).pop()))\n    grund = `Name passt nicht zur Personalnummer (PDF: ${a.name_pdf})`;\n  else if (!person.email) grund = 'Keine E-Mail-Adresse in der Liste';\n  else if (!String(person.passwort ?? '').trim()) grund = 'Kein Passwort in der Liste';\n  else if (schonVersendet.has(schluessel(a.personalnummer, a.monat, a.jahr)))\n    grund = 'Wurde bereits versendet (laut Versandprotokoll)';\n\n  if (grund) {\n    out.push({ json: { ...basis, name: person ? person.name : a.name_pdf, status: 'ignoriert', grund } });\n    continue;\n  }\n\n  const name = String(person.name).trim();\n  const dateiname = `${name.replace(/[^\\p{L}\\p{N}-]+/gu, '_')}_${a.monat}_${a.jahr}_Lohnabrechnung.pdf`;\n  const betreff = `FIRMA | Lohnabrechnung ${a.monat} ${a.jahr}`;\n  out.push({ json: {\n    ...basis, name, email: person.email, passwort: String(person.passwort).trim(), dateiname,\n    empfaenger: cfg.testmodus ? cfg.testadresse : person.email,\n    betreff: cfg.testmodus ? `[TEST → ${person.email}] ${betreff}` : betreff,\n    status: 'senden',\n  } });\n}\n\nfor (const i of scan.ignoriert) {\n  out.push({ json: { quelle: i.quelle, pdf: i.pdf || '', seiten: i.seiten || [], name: '',\n    status: 'ignoriert', grund: i.grund } });\n}\n\nif (out.length === 0) out.push({ json: { status: 'leer' } });\nreturn out;\n"
+      },
+      "id": "1e49ecd0-aa62-4d03-bd1d-1a39013a93be",
+      "name": "🧠 Abrechnungen zuordnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "6a2b16ee-f774-4eef-b585-1f6e8fa4fb92",
+      "name": "🔁 Einzeln abarbeiten",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -224,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "792d3691-4e85-4046-9f7b-49cf94328962",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "senden",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "7e7b9b59-41f8-4ec6-94cd-3cefa1bd90e0",
+      "name": "❓ Senden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('⚙️ Einstellungen').first().json.pdfService }}/split-encrypt",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ quelle: $json.quelle, pdf: $json.pdf, seiten: $json.seiten, password: $json.passwort }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "4147224a-b449-48b2-a5f8-c2fb9062f768",
+      "name": "🔒 Teilen & verschlüsseln",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        304
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Der verschlüsselten PDF den richtigen Dateinamen geben\nconst akt = $('❓ Senden?').first().json;\nfor (const item of $input.all()) {\n  item.binary.data.fileName = akt.dateiname;\n  item.binary.data.fileExtension = 'pdf';\n  item.binary.data.mimeType = 'application/pdf';\n}\nreturn $input.all();\n"
+      },
+      "id": "cd57f4e4-83e6-42c7-93d1-669dd2e62781",
+      "name": "🏷️ Dateiname setzen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('❓ Senden?').first().json.empfaenger }}",
+        "subject": "={{ $('❓ Senden?').first().json.betreff }}",
+        "message": "=<p>Hallo {{ $('❓ Senden?').first().json.name }},</p>\n\n<p>\nanbei erhältst du deine Lohnabrechnung für\n<b>{{ $('❓ Senden?').first().json.monat }} {{ $('❓ Senden?').first().json.jahr }}</b>.\n</p>\n\n<p>\nDie PDF ist mit deinem persönlichen Passwort geschützt, das du von uns auf einem Zettel bekommen hast.\n</p>\n\n<p>\nBei Fragen kannst du dich jederzeit bei uns melden.\n</p>\n\n<p>\nViele Grüße<br>\n</p>\n<p>\nVorname Nachname <br>\nPosition <br>\nfirma.de\n</p>",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "id": "1dcaaf0d-ff90-4af3-a34a-e73e0b8f0dc6",
+      "name": "📧 Lohnabrechnung senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        208
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0dc727a2-39f7-400f-87ce-bd80b61801a5",
+              "name": "datum",
+              "value": "={{ $now.setZone('Europe/Berlin').toFormat('dd.MM.yyyy HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "ab05f124-328d-42df-ba69-ea69883690d1",
+              "name": "personalnummer",
+              "value": "={{ $('❓ Senden?').first().json.personalnummer }}",
+              "type": "string"
+            },
+            {
+              "id": "87994a43-ee48-4aff-9073-85e3302cac76",
+              "name": "name",
+              "value": "={{ $('❓ Senden?').first().json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "561ec469-86c1-4b0b-a4ac-3960d0a0ff35",
+              "name": "monat",
+              "value": "={{ $('❓ Senden?').first().json.monat }}",
+              "type": "string"
+            },
+            {
+              "id": "ae05cef7-9449-408e-9311-f8396b818667",
+              "name": "jahr",
+              "value": "={{ $('❓ Senden?').first().json.jahr }}",
+              "type": "string"
+            },
+            {
+              "id": "b1145dbb-d5b7-4080-bb7f-2b65666866b0",
+              "name": "status",
+              "value": "={{ $('⚙️ Einstellungen').first().json.testmodus ? 'test' : 'versendet' }}",
+              "type": "string"
+            },
+            {
+              "id": "39f55922-007f-41f5-bdab-f7c80c2789b8",
+              "name": "datei",
+              "value": "={{ $('❓ Senden?').first().json.dateiname }}",
+              "type": "string"
+            },
+            {
+              "id": "5e05cbca-007d-4560-9b4c-73adc7801d34",
+              "name": "empfaenger",
+              "value": "={{ $('❓ Senden?').first().json.empfaenger }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2df8aef-ce58-41ec-ae1c-61619a7eea29",
+      "name": "📝 Protokollzeile",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/DEINE_GOOGLE_SHEET_ID/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Versandprotokoll",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "cb52d02b-bb01-4fa2-aa7e-dfabf611e649",
+      "name": "📋 Ins Protokoll schreiben",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1104,
+        112
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$('❓ Senden?').first().json, passwort: undefined, status: $('📝 Protokollzeile').first().json.status, hinweis: $json.error ? 'Eintrag ins Versandprotokoll fehlgeschlagen' : undefined }) }}",
+        "options": {}
+      },
+      "id": "3d394f86-92f6-42f7-9074-3c54776b28a1",
+      "name": "✅ Ergebnis",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$('❓ Senden?').first().json, passwort: undefined, status: 'fehler', grund: String($json.error?.message ?? $json.error ?? 'Unbekannter Fehler') }) }}",
+        "options": {}
+      },
+      "id": "81d11f8f-7cf8-4af7-87f4-3fe7cd843bcf",
+      "name": "❌ Fehler merken",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Übersicht für die verantwortliche Person bauen\nconst cfg = $('⚙️ Einstellungen').first().json;\nconst scan = $('📂 Eingang prüfen').first().json;\nconst rows = $input.all().map(i => i.json).filter(r => r.status !== 'leer');\nconst esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));\n\nconst ok = rows.filter(r => r.status === 'versendet' || r.status === 'test');\nconst ign = rows.filter(r => r.status === 'ignoriert');\nconst err = rows.filter(r => r.status === 'fehler');\n\nconst liste = (arr, f) => arr.length ? '<ul>' + arr.map(r => `<li>${f(r)}</li>`).join('') + '</ul>' : '<p>–</p>';\nconst seiten = r => (r.seiten && r.seiten.length) ? ` (Seite ${r.seiten.map(s => s + 1).join(', ')})` : '';\n\nlet html = '';\nif (cfg.testmodus) html += '<p><b>🧪 TESTMODUS:</b> Alle Mails gingen an ' + esc(cfg.testadresse) + ', nicht an die Mitarbeiter.</p>';\nhtml += `<p>Datei(en): ${scan.quellen.map(esc).join(', ')}</p>`;\nhtml += `<h3>✅ ${ok.length} versendet</h3>` + liste(ok, r =>\n  `${esc(r.name)} (Nr. ${r.personalnummer}) – ${esc(r.monat)} ${esc(r.jahr)} → ${esc(r.empfaenger)}` + (r.hinweis ? ` ⚠️ ${esc(r.hinweis)}` : ''));\nhtml += `<h3>⏭️ ${ign.length} ignoriert</h3>` + liste(ign, r =>\n  `${esc(r.name) || 'unbekannt'}${r.personalnummer ? ` (Nr. ${r.personalnummer})` : ''}${seiten(r)}: ${esc(r.grund)}`);\nhtml += `<h3>❌ ${err.length} Fehler</h3>` + liste(err, r =>\n  `${esc(r.name)} (Nr. ${r.personalnummer}): ${esc(r.grund)}`);\nif (err.length) html += '<p>Bei Fehlern: Datei erneut in den Ordner „eingang“ legen. Bereits versendete Abrechnungen werden nicht doppelt verschickt.</p>';\n\nconst betreff = `${cfg.testmodus ? '🧪 TEST – ' : ''}Payroll: ${ok.length} versendet, ${ign.length} ignoriert, ${err.length} Fehler`;\nreturn [{ json: { betreff, html, quellen: scan.quellen } }];\n"
+      },
+      "id": "7f5a7ee2-8208-40c2-b217-39caeed0a5a9",
+      "name": "📊 Zusammenfassung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('⚙️ Einstellungen').first().json.pdfService }}/archive",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ quellen: $json.quellen }) }}",
+        "options": {}
+      },
+      "id": "b7a37c90-c32e-4bc9-9130-de2607d3fbf6",
+      "name": "📦 Archivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('⚙️ Einstellungen').first().json.infoadresse }}",
+        "subject": "={{ $('📊 Zusammenfassung').first().json.betreff }}",
+        "message": "={{ $('📊 Zusammenfassung').first().json.html + ($json.verschoben ? '<p>📦 Archiviert: ' + $json.verschoben.join(', ') + '</p>' : '<p>⚠️ Die Datei konnte nicht ins Archiv verschoben werden. Bitte prüfen, sonst wird sie erneut verarbeitet.</p>') }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e3f2b707-a2c0-432d-aa5c-aa36fa1e3e49",
+      "name": "📧 Zusammenfassung senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bei grundsätzlichen Fehlern höchstens 1 Mail pro Stunde schicken\nconst speicher = $getWorkflowStaticData('global');\nconst jetzt = Date.now();\nif (speicher.letzteFehlermail && jetzt - speicher.letzteFehlermail < 60 * 60 * 1000) return [];\nspeicher.letzteFehlermail = jetzt;\nconst e = $input.first().json.error ?? $input.first().json;\nconst text = typeof e === 'string' ? e : (e.message || JSON.stringify(e));\nreturn [{ json: { fehler: text, schritt: $prevNode.name } }];\n"
+      },
+      "id": "fcddeb91-2606-4825-b8be-95ff19edd707",
+      "name": "🚨 Fehlermail nötig?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "deine.adresse@example.com",
+        "subject": "🚨 Payroll Agent: Fehler – nichts wurde verschickt",
+        "message": "=<p>Der Payroll Agent konnte nicht arbeiten. Es wurde <b>nichts</b> verschickt.</p><p>Schritt: {{ $json.schritt }}<br>Fehler: {{ $json.fehler }}</p><p>Häufige Ursache: Docker Desktop läuft nicht oder der Dienst „pdf-service“ ist gestoppt. Der Agent versucht es alle 5 Minuten erneut (diese Mail kommt höchstens 1× pro Stunde).</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c2341cf3-0f0c-476f-9515-71ae17d41117",
+      "name": "🚨 Fehlermail senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -656,
+        704
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://pdf-service:5000/cleanup",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"tage\": 5}",
+        "options": {}
+      },
+      "id": "02bc2250-4760-42bb-bed4-c945e2d6ead3",
+      "name": "🧹 Dateien älter als 5 Tage löschen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1328,
+        912
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 13
+            }
+          ]
+        }
+      },
+      "id": "dd058176-2dec-4d64-9d42-7683d36c3189",
+      "name": "⏰ Täglich 13:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1760,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "daysInterval": 5,
+              "triggerAtHour": 3
+            }
+          ]
+        }
+      },
+      "id": "6751ffea-f84c-43b3-b05f-15f8c24d0365",
+      "name": "🌙 Alle 5 Tage um 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1760,
+        912
+      ]
+    }
+  ],
+  "connections": {
+    "⚙️ Einstellungen": {
+      "main": [
+        [
+          {
+            "node": "📂 Eingang prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📂 Eingang prüfen": {
+      "main": [
+        [
+          {
+            "node": "❓ Neue Dateien?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🚨 Fehlermail nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "❓ Neue Dateien?": {
+      "main": [
+        [
+          {
+            "node": "👤 Mitarbeiterliste lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "👤 Mitarbeiterliste lesen": {
+      "main": [
+        [
+          {
+            "node": "📋 Versandprotokoll lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🚨 Fehlermail nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Versandprotokoll lesen": {
+      "main": [
+        [
+          {
+            "node": "🧠 Abrechnungen zuordnen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🚨 Fehlermail nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Abrechnungen zuordnen": {
+      "main": [
+        [
+          {
+            "node": "🔁 Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔁 Einzeln abarbeiten": {
+      "main": [
+        [
+          {
+            "node": "📊 Zusammenfassung",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❓ Senden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "❓ Senden?": {
+      "main": [
+        [
+          {
+            "node": "🔒 Teilen & verschlüsseln",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔁 Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔒 Teilen & verschlüsseln": {
+      "main": [
+        [
+          {
+            "node": "🏷️ Dateiname setzen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Fehler merken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏷️ Dateiname setzen": {
+      "main": [
+        [
+          {
+            "node": "📧 Lohnabrechnung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Lohnabrechnung senden": {
+      "main": [
+        [
+          {
+            "node": "📝 Protokollzeile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Fehler merken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Protokollzeile": {
+      "main": [
+        [
+          {
+            "node": "📋 Ins Protokoll schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Ins Protokoll schreiben": {
+      "main": [
+        [
+          {
+            "node": "✅ Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Ergebnis": {
+      "main": [
+        [
+          {
+            "node": "🔁 Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "❌ Fehler merken": {
+      "main": [
+        [
+          {
+            "node": "🔁 Einzeln abarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Zusammenfassung": {
+      "main": [
+        [
+          {
+            "node": "📦 Archivieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Archivieren": {
+      "main": [
+        [
+          {
+            "node": "📧 Zusammenfassung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚨 Fehlermail nötig?": {
+      "main": [
+        [
+          {
+            "node": "🚨 Fehlermail senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧹 Dateien älter als 5 Tage löschen": {
+      "main": [
+        [],
+        [
+          {
+            "node": "🚨 Fehlermail nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏰ Täglich 13:00": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Einstellungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌙 Alle 5 Tage um 03:00": {
+      "main": [
+        [
+          {
+            "node": "🧹 Dateien älter als 5 Tage löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataSuccessExecution": "none"
+  }
+}
