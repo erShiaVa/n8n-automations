@@ -1,6 +1,6 @@
 # n8n Automations
 
-Event Order-Automation
+<h2>Event Order-Automation</h2>
 
 👉🏼 Ziel:
 Aus jeder Event-Anfrage automatisch einen geprüften Angebotsentwurfmachen
@@ -45,7 +45,7 @@ Die Preisberechnung folgt festen Regeln. Das Ergebnis ist jedes Malgleich und na
 3. Sparsame Schnittstellen:
 sevDesk wird nur bei einer neuen Anfrage abgefragt. Dasspart API-Anfragen.
 
-Payroll Agent
+<h2>Payroll Agent</h2>
 
 👉🏼 Ziel:
 Lohnabrechnungen jeden Monat sicher und automatisch an die richtigenPersonen verschicken
