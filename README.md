@@ -21,6 +21,7 @@ Das kostete bei jeder Anfrage Zeit und war fehleranfällig, z. B. durch Tippfehl
 
 ✅ Lösung
 Ein n8n-Workflow übernimmt die Vorarbeit:
+
 1.Anfrage auslesen:
 Name, Datum, Gästezahl, Dauer und Ort aus der Gmail-Nachricht
 
