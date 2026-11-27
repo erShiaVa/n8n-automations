@@ -23,12 +23,16 @@ Das kostete bei jeder Anfrage Zeit und war fehleranfällig, z. B. durch Tippfehl
 Ein n8n-Workflow übernimmt die Vorarbeit:
 1.Anfrage auslesen:
 Name, Datum, Gästezahl, Dauer und Ort aus der Gmail-Nachricht
+
 2.Preis berechnen:
 nach festen Regeln für Becher, Personal, Transport sowieWochenend- und Feiertagszuschlag
+
 3.Kunden abgleichen:
 in sevDesk finden oder neu anlegen
+
 4.Angebot vorbereiten:
 als Entwurf in sevDesk
+
 5.Zur Prüfung melden:
 Ich bekomme eine Mail mit Link zum Entwurf. Fehler werden mit einem Gmail-Label markiert und per Mail gemeldet.
 
