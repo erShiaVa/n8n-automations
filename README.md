@@ -1,27 +1,41 @@
 # n8n Automations
 
-Hier zeige ich Automatisierungen, die ich mit [n8n](https://n8n.io) für ein Berliner Gastro-Unternehmen gebaut habe. Jede davon nimmt im Backoffice eine Aufgabe ab, die vorher von Hand erledigt wurde, und läuft im echten Betrieb.
+Event Order-Automation
 
-Alle Workflows sind **bereinigt**: Namen, E-Mail-Adressen, Links und Preise sind durch Platzhalter oder Beispielwerte ersetzt. Logik und Aufbau entsprechen der Version, die tatsächlich im Einsatz ist.
+👉🏼 Ziel:
+Aus jeder Event-Anfrage automatisch einen geprüften Angebotsentwurfmachen
 
-## Projekte
+👉🏼 Technik:
+n8n, Gmail, sevDesk
 
-| Projekt | Was es macht | Werkzeuge |
-|---|---|---|
-| [Payroll Agent](payroll-agent/) | Verteilt die monatlichen Lohnabrechnungen vom Steuerbüro automatisch an die Mitarbeitenden: teilt die Sammel-PDF auf, ordnet jede Abrechnung zu, schützt sie mit einem persönlichen Passwort und verschickt sie per Mail. | n8n, Google Sheets, Gmail, Docker, Python (qpdf) |
-| [Event Order Automation](event-order-automation/) | Macht aus einer Eventanfrage über das Website-Formular automatisch einen fertig berechneten Angebotsentwurf in der Buchhaltungssoftware sevDesk. | n8n, Gmail, sevDesk-API |
+👉🏼 Status:
+im Einsatz, läuft täglich um 13:00 und 14:00 Uhr
 
-## So arbeite ich
+⚠️ Ausgangslage
+Kunden fragen Events über ein Formular auf der Website an. Jede Anfrage musste vonHand bearbeitet werden:
+- Anfrage lesen
+- Preis ausrechnen
+- Kunden in sevDesk suchen oder neu anlegen
+- Angebot schreiben
+Das kostete bei jeder Anfrage Zeit und war fehleranfällig, z. B. durch Tippfehler.
 
-- **Erst klären, dann bauen:** Vor jedem Projekt schreibe ich die Anforderungen genau auf: Was soll passieren, was darf auf keinen Fall passieren, wer bekommt welche Nachricht?
-- **Sicher testen:** Neue Workflows laufen zuerst im Testmodus, bei dem alle Mails an mich gehen. Erst nach einem erfolgreichen Test mit echten Daten gehen sie live.
-- **Fehler sichtbar machen:** Jeder Workflow meldet sich, wenn etwas schiefgeht, statt still abzubrechen.
-- **Sparsam mit Anfragen:** Externe Dienste werden nur dann angefragt, wenn es wirklich etwas zu tun gibt.
-- **Dokumentieren:** Zu jedem Projekt halte ich den Stand, die Tests und die Learnings fest.
+✅ Lösung
+Ein n8n-Workflow übernimmt die Vorarbeit:
+1.Anfrage auslesen:
+Name, Datum, Gästezahl, Dauer und Ort aus der Gmail-Nachricht
+2.Preis berechnen:
+nach festen Regeln für Becher, Personal, Transport sowieWochenend- und Feiertagszuschlag
+3.Kunden abgleichen:
+in sevDesk finden oder neu anlegen
+4.Angebot vorbereiten:
+als Entwurf in sevDesk
+5.Zur Prüfung melden:
+Ich bekomme eine Mail mit Link zum Entwurf. Fehler werden mit einem Gmail-Label markiert und per Mail gemeldet.
 
-## Workflows ausprobieren
-
-1. In n8n einen neuen Workflow öffnen.
-2. Oben rechts auf **„…“ → „Import from File…“** klicken und die `workflow.json` des Projekts auswählen.
-3. Die eigenen Zugänge (Credentials) in den markierten Bausteinen auswählen und die Platzhalter ersetzen.
-4. Unter **„…“ → „Settings“** die Zeitzone prüfen. Beim Import übernimmt n8n die Workflow-Einstellungen nicht.
+📍 Wichtige Entscheidungen
+1. Mensch entscheidet:
+Der Workflow bereitet nur vor. Nichts geht automatisch an denKunden.
+2. Regeln statt KI:
+Die Preisberechnung folgt festen Regeln. Das Ergebnis ist jedes Malgleich und nachvollziehbar.
+3. Sparsame Schnittstellen:
+sevDesk wird nur bei einer neuen Anfrage abgefragt. Dasspart API-Anfragen.
